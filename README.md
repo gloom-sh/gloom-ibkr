@@ -3,7 +3,7 @@
 Account and position sync for [Gloomberb](https://github.com/gloom-sh/gloomberb) over the IBKR Flex Web Service.
 
 ```bash
-gloomberb install ibkr
+gloomberb install gloom-sh/gloomberb-ibkr
 ```
 
 Then add an Interactive Brokers profile from the Brokers pane and paste a Flex token and query id.
