@@ -1,0 +1,18 @@
+{
+  "id": "ibkr",
+  "tagline": "IBKR account sync over the Flex Web Service",
+  "description": "Account and position sync for Interactive Brokers using the Flex Web Service. Owns the IBKR broker profile; install IBKR Gateway alongside it for live data and trading.",
+  "categories": [
+    "broker"
+  ],
+  "targets": [
+    "cli",
+    "tui",
+    "desktop"
+  ],
+  "hosts": [
+    "gdcdyn.interactivebrokers.com",
+    "ndcdyn.interactivebrokers.com"
+  ],
+  "minGloomberb": "0.12.0"
+}
