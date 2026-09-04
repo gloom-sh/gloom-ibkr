@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Interactive Brokers">
+  <rect width="64" height="64" fill="#D81222"/>
+  <rect x="16" y="19" width="6" height="26" fill="#FFFFFF"/>
+  <path fill="#FFFFFF" fill-rule="evenodd" d="M28 19 H40 A6 6 0 0 1 40 30.6 H28 Z M34 23 H39.4 A2.3 2.3 0 0 1 39.4 26.6 H34 Z M28 33.4 H41.5 A5.8 5.8 0 0 1 41.5 45 H28 Z M34 37.4 H40.9 A2.3 2.3 0 0 1 40.9 41 H34 Z"/>
+  <rect x="28" y="19" width="6" height="26" fill="#FFFFFF"/>
+</svg>
