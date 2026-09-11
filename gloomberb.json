@@ -16,5 +16,8 @@
     "gdcdyn.interactivebrokers.com",
     "ndcdyn.interactivebrokers.com"
   ],
+  "contributes": {
+    "broker": true
+  },
   "minGloomberb": "0.14.0"
 }
