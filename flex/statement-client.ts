@@ -21,13 +21,19 @@ interface FlexErrorContext {
   httpStatus?: number;
 }
 
-function decodeXmlText(value: string): string {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, "\"")
-    .replace(/&apos;/g, "'");
+export function decodeXmlText(value: string): string {
+  const named: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'" };
+  return value.replace(/&(amp|lt|gt|quot|apos|#\d+|#x[\da-fA-F]+);/g, (reference, entity: string) => {
+    if (named[entity]) return named[entity]!;
+    const codePoint = entity.startsWith("#x")
+      ? Number.parseInt(entity.slice(2), 16)
+      : Number(entity.slice(1));
+    const valid = codePoint === 0x9 || codePoint === 0xA || codePoint === 0xD
+      || (codePoint >= 0x20 && codePoint <= 0xD7FF)
+      || (codePoint >= 0xE000 && codePoint <= 0xFFFD)
+      || (codePoint >= 0x10000 && codePoint <= 0x10FFFF);
+    return valid ? String.fromCodePoint(codePoint) : reference;
+  });
 }
 
 function extractXmlTag(text: string, tagName: string): string | null {

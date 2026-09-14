@@ -6,6 +6,7 @@ import type {
   BrokerPortfolioPerformance,
   BrokerPortfolioPerformancePoint,
 } from "gloomberb/types/trading";
+import { decodeXmlText } from "./statement-client";
 
 export {
   loadFlexStatement,
@@ -22,7 +23,7 @@ function parseAttributes(raw: string): Record<string, string> {
 }
 
 function parseNumber(value: string | undefined): number | undefined {
-  if (!value) return undefined;
+  if (!value?.trim()) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
@@ -127,7 +128,7 @@ function buildContractRef(attributes: Record<string, string>, symbol: string, as
 
 export function parseFlexPositions(xml: string): BrokerPosition[] {
   const positions: BrokerPosition[] = [];
-  const posRegex = /<OpenPosition[^>]*>/g;
+  const posRegex = /<OpenPosition\b[^>]*>/g;
   let match: RegExpExecArray | null;
 
   while ((match = posRegex.exec(xml)) !== null) {
@@ -138,10 +139,14 @@ export function parseFlexPositions(xml: string): BrokerPosition[] {
       return parseNumber(attr(name));
     };
 
-    const symbol = attr("symbol");
-    const quantity = Number(attr("position") || attr("quantity") || "0");
-    const costBasis = Number(attr("costBasisPrice") || attr("costPrice") || "0");
-    const currency = attr("currency") || "USD";
+    const symbol = attr("symbol").trim();
+    const quantity = parseNumber(attr("position").trim() || attr("quantity").trim());
+    if (quantity === undefined) throw new Error(`IBKR Flex: invalid or missing position quantity for ${symbol || "unknown symbol"}.`);
+    if (quantity === 0) continue;
+    if (!symbol) throw new Error("IBKR Flex: position symbol is missing.");
+    const costBasis = parseNumber(attr("costBasisPrice").trim() || attr("costPrice").trim());
+    const currency = attr("currency").trim();
+    if (!currency) throw new Error(`IBKR Flex: missing currency for ${symbol}.`);
     const exchange = attr("listingExchange") || attr("exchange") || "";
     const accountId = attr("accountId");
     const description = attr("description");
@@ -150,13 +155,12 @@ export function parseFlexPositions(xml: string): BrokerPosition[] {
     const side = attr("side")?.toLowerCase();
     const contract = buildContractRef(attributes, symbol, assetCategory);
 
-    if (!symbol || quantity === 0) continue;
-
     positions.push({
       ticker: symbol,
       exchange,
       shares: Math.abs(quantity),
       avgCost: costBasis,
+      priceBasis: assetCategory === "BOND" ? "percent-of-par" : undefined,
       currency,
       accountId: accountId || undefined,
       name: description || undefined,
@@ -275,7 +279,9 @@ function firstStringAttribute(
 
 function parseFlexReturn(value: number | undefined): number | undefined {
   if (value == null) return undefined;
-  return Math.abs(value) > 1 ? value / 100 : value;
+  // Accepted cumulative attributes use percentage points, including values
+  // between -1 and 1. Numeric magnitude cannot establish a different unit.
+  return value / 100;
 }
 
 function flexAccountTokens(attributes: Record<string, string>): Set<string> {
@@ -285,7 +291,7 @@ function flexAccountTokens(attributes: Record<string, string>): Set<string> {
     attributes.accountAlias,
     attributes.alias,
     attributes.name,
-  ].filter((value): value is string => !!value));
+  ].filter((value): value is string => !!value).map(decodeXmlText));
 }
 
 export function parseFlexPortfolioPerformance(
@@ -294,6 +300,7 @@ export function parseFlexPortfolioPerformance(
   fetchedAt = Date.now(),
 ): BrokerPortfolioPerformance | null {
   const points: BrokerPortfolioPerformancePoint[] = [];
+  const matchedAccountIds = new Set<string>();
   let currency: string | undefined;
 
   const statementRegex = /<FlexStatement\b([^>]*)>([\s\S]*?)<\/FlexStatement>/g;
@@ -305,18 +312,25 @@ export function parseFlexPortfolioPerformance(
   for (const statement of statements) {
     const statementAttrs = statement.attributes;
     const body = statement.body;
-    const statementAccountId = statementAttrs.accountId || "";
+    const statementAccountId = decodeXmlText(statementAttrs.accountId || "");
     const statementTokens = flexAccountTokens(statementAttrs);
     const statementMatchesAccount = statementTokens.has(accountId);
-    if (statementAccountId && !statementMatchesAccount && statements.length !== 1) continue;
+    // Alias ownership is declared independently of whether an account has
+    // observations with dates or metrics that this parser can use.
+    if (statementMatchesAccount && statementAccountId) matchedAccountIds.add(statementAccountId);
+    if (matchedAccountIds.size > 1) return null;
 
     for (const entry of body.matchAll(/<ChangeInNAV\b([^>]*)\/>/g)) {
       const attributes = parseAttributes(entry[1] ?? "");
-      const entryAccountId = attributes.accountId || statementAccountId;
+      const rowAccountId = decodeXmlText(attributes.accountId || "");
+      if (statementAccountId && rowAccountId && rowAccountId !== statementAccountId) continue;
+      const entryAccountId = rowAccountId || statementAccountId;
       const entryTokens = flexAccountTokens(attributes);
       const entryMatchesAccount = entryTokens.has(accountId)
         || (statementMatchesAccount && (!entryAccountId || entryAccountId === statementAccountId));
-      if (entryAccountId && !entryMatchesAccount && statements.length !== 1) continue;
+      if (!entryMatchesAccount) continue;
+      if (entryAccountId) matchedAccountIds.add(entryAccountId);
+      if (matchedAccountIds.size > 1) return null;
 
       const date = parseFlexDate(firstStringAttribute(attributes, [
         "reportDate",
@@ -336,8 +350,6 @@ export function parseFlexPortfolioPerformance(
         "cumulativeReturn",
         "timeWeightedReturnCumulative",
         "twrCumulative",
-        "twr",
-        "mwr",
       ]));
       if (value == null && cumulativeReturn == null) continue;
 
