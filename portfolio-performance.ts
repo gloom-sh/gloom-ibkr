@@ -9,7 +9,8 @@ import { fnv1aHashString } from "gloomberb/utils";
 
 const PERFORMANCE_LOG = debugLog.createLogger("ibkr-performance");
 const PERFORMANCE_CACHE_KIND = "portfolio-performance";
-const PERFORMANCE_CACHE_SCHEMA_VERSION = 1;
+// Older entries can contain history relabeled without a verified account match.
+const PERFORMANCE_CACHE_SCHEMA_VERSION = 2;
 const PERFORMANCE_CACHE_POLICY = {
   staleMs: 15 * 60 * 1000,
   expireMs: 90 * 24 * 60 * 60 * 1000,
