@@ -18,7 +18,7 @@ export const ibkrPlugin: GloomPlugin = {
   name: "Interactive Brokers",
   version: "1.0.0",
   description: "Interactive Brokers account and position sync through the Flex Web Service.",
-  homepage: "https://github.com/gloom-sh/gloomberb-ibkr",
+  homepage: "https://github.com/gloom-sh/gloom-ibkr",
   toggleable: true,
   broker: ibkrBroker,
 

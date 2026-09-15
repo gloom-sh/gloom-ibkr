@@ -1,5 +1,5 @@
 {
-  "name": "gloomberb-ibkr",
+  "name": "gloom-ibkr",
   "version": "1.0.0",
   "description": "Interactive Brokers account sync for Gloomberb, over the Flex Web Service",
   "type": "module",
@@ -7,7 +7,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gloom-sh/gloomberb-ibkr"
+    "url": "https://github.com/gloom-sh/gloom-ibkr"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
