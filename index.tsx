@@ -16,10 +16,11 @@ import { ibkrBroker } from "./broker-adapter";
 export const ibkrPlugin: GloomPlugin = {
   id: "ibkr",
   name: "Interactive Brokers",
-  version: "1.0.0",
+  version: "1.1.0",
   description: "Interactive Brokers account and position sync through the Flex Web Service.",
-  homepage: "https://github.com/gloom-sh/gloomberb-ibkr",
+  homepage: "https://github.com/gloom-sh/gloom-ibkr",
   toggleable: true,
+  hosts: ["gdcdyn.interactivebrokers.com", "ndcdyn.interactivebrokers.com"],
   broker: ibkrBroker,
 
   setup(ctx) {

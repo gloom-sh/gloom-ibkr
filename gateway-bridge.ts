@@ -41,14 +41,29 @@ export interface IbkrGatewayBridge {
   subscribeStatus(instanceId: string, listener: () => void): () => void;
 }
 
-let bridge: IbkrGatewayBridge | null = null;
+/**
+ * The bridge lives on `globalThis`, not in a module variable.
+ *
+ * In the terminal both plugins resolve this file to one module, so a variable
+ * would do. The desktop view compiles each plugin into its own bundle, and a
+ * sibling import is copied into the bundle that imports it: Gateway would set
+ * the bridge in its copy while Flex read its own, still null, and offer to
+ * install a plugin that is already running. One process-wide slot is what
+ * "Gateway registers itself with Flex" actually means.
+ */
+const BRIDGE_SLOT = Symbol.for("gloom-ibkr.gateway-bridge");
+
+function slot(): { bridge: IbkrGatewayBridge | null } {
+  const globals = globalThis as { [BRIDGE_SLOT]?: { bridge: IbkrGatewayBridge | null } };
+  return (globals[BRIDGE_SLOT] ??= { bridge: null });
+}
 
 export function setIbkrGatewayBridge(next: IbkrGatewayBridge | null): void {
-  bridge = next;
+  slot().bridge = next;
 }
 
 export function getIbkrGatewayBridge(): IbkrGatewayBridge | null {
-  return bridge;
+  return slot().bridge;
 }
 
 export const GATEWAY_UNAVAILABLE_MESSAGE =
@@ -64,13 +79,14 @@ export function gatewayUnavailableStatus(): BrokerConnectionStatus {
 }
 
 export function requireGatewayBridge(): IbkrGatewayBridge {
+  const bridge = getIbkrGatewayBridge();
   if (!bridge) throw new Error(GATEWAY_UNAVAILABLE_MESSAGE);
   return bridge;
 }
 
 /** The gateway service for an instance, or `null` when Gateway is not installed. */
 export function gatewayServiceFor(instanceId: string): IbkrGatewayServiceFacade | null {
-  return bridge?.getService(instanceId) ?? null;
+  return getIbkrGatewayBridge()?.getService(instanceId) ?? null;
 }
 
 /**
