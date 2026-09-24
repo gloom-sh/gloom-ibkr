@@ -19,7 +19,7 @@ export function InputDialog({
   return (
     <DialogFrame title={step.label}>
       {step.body?.map((line, index) => (
-        <Text key={index} fg={colors.textDim}>{line || " "}</Text>
+        <Text key={index} fg={colors.textDim} wrapText>{line || " "}</Text>
       ))}
       {step.body && step.body.length > 0 && <Box height={1} />}
       <TextField
