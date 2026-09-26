@@ -11,7 +11,7 @@ jobs:
     env:
       # Shared UI and source-faithful position contracts from gloom-sh/gloomberb#867,
       # pinned to the pane chrome sweep in gloom-sh/gloomberb#1091.
-      GLOOMBERB_REVISION: e3763c007a9201104246d4e7d51eadb729b94607
+      GLOOMBERB_REVISION: 4172ad1f122651f980a97755d4db0c3ad5c6f0d9
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
