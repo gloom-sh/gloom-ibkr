@@ -10,6 +10,8 @@ gloomberb install gloom-sh/gloom-ibkr
 
 Then add an Interactive Brokers profile from the Brokers pane and paste a Flex token and query id.
 
+To connect with a browser sign-in instead, pick Interactive Brokers in Add Broker and choose Sign in. That is built into Gloom and needs no plugin.
+
 ## Flex and Gateway
 
 Interactive Brokers is one broker with two connection modes, and they have very different requirements:
