@@ -1,7 +1,7 @@
 {
   "name": "gloom-ibkr",
-  "version": "1.1.0",
-  "description": "Interactive Brokers account sync for Gloomberb, over the Flex Web Service",
+  "version": "1.2.0",
+  "description": "Interactive Brokers account sync for Gloomberb: IBKR sign-in, Flex, or Gateway",
   "type": "module",
   "main": "index.tsx",
   "license": "MIT",
@@ -14,7 +14,7 @@
     "test": "bun test"
   },
   "peerDependencies": {
-    "gloomberb": ">=0.14.0",
+    "gloomberb": ">=0.15.3",
     "react": ">=19"
   },
   "peerDependenciesMeta": {
