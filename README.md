@@ -1,28 +1,25 @@
 # Interactive Brokers for Gloomberb
 
-Account and position sync for [Gloomberb](https://github.com/gloom-sh/gloomberb): sign in with IBKR, or use the IBKR Flex Web Service.
+Account and position sync for [Gloomberb](https://github.com/gloom-sh/gloomberb) over the IBKR Flex Web Service.
 
-Requires Gloomberb 0.15.3 or later.
+Requires Gloomberb 0.14.0 or later.
 
 ```bash
 gloomberb install gloom-sh/gloom-ibkr
 ```
 
-Then add an Interactive Brokers profile from the Brokers pane and press Connect to sign in with IBKR, or pick Flex and paste a Flex token and query id.
+Then add an Interactive Brokers profile from the Brokers pane and paste a Flex token and query id.
 
-## Connection modes
+## Flex and Gateway
 
-Interactive Brokers is one broker with three connection modes, and they have very different requirements:
+Interactive Brokers is one broker with two connection modes, and they have very different requirements:
 
 | | Transport | Runs on |
 |---|---|---|
-| **IBKR sign-in** (this plugin) | HTTPS through your Gloom account | anywhere |
 | **Flex** (this plugin) | HTTPS to a hosted statement service | anywhere |
 | **[Gateway](https://github.com/gloom-sh/gloom-ibkr-gateway)** | raw TCP to a local TWS process | terminal and desktop only |
 
-**IBKR sign-in** is where new profiles start. You sign in with IBKR in your browser: no Flex query to set up, no software to run. Positions, balances, margin, daily history and trades sync. Orders are created as IBKR order instructions, which open in IBKR for you to review and submit. IBKR keeps one such connection per user, so it is shared with your Gloom MCP agents, and removing the profile here does not revoke it.
-
-This plugin owns the broker id and the whole profile schema, including the Gateway fields, so you have a single "Interactive Brokers" profile whichever mode it uses and your stored credentials keep working.
+This plugin owns the broker id and the whole profile schema, including the Gateway fields, so you have a single "Interactive Brokers" profile either way and your stored credentials work with both.
 
 Install `gloom-ibkr-gateway` to use a Gateway or TWS profile, live market data, or the trading console. Without it, a Gateway-mode profile says so instead of failing quietly.
 
@@ -40,7 +37,7 @@ IBKR's [Change in NAV reference](https://www.ibkrguides.com/reportingreference/r
 
 ## Development
 
-`gloomberb` and `react` are peer dependencies, never real ones: Gloomberb links its own copies into every plugin directory so there is exactly one instance of each in the process.
+`gloomberb` and `react` are peer dependencies, never real ones — Gloomberb links its own copies into every plugin directory so there is exactly one instance of each in the process.
 
 ```bash
 bun install

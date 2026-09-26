@@ -4,12 +4,7 @@ import type { IbkrGatewayConfig, ResolvedIbkrGatewayConnection } from "./gateway
 export const LEGACY_IBKR_STATEMENT_URL = "https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest";
 export const IBKR_STATEMENT_URL = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/SendRequest";
 
-/**
- * How a profile reaches IBKR. "cloud" is IBKR sign-in: the user's Gloom
- * account holds the one connection IBKR allows per user, and this device asks
- * it for data instead of talking to IBKR itself.
- */
-export type IbkrConnectionMode = "flex" | "gateway" | "cloud";
+type IbkrConnectionMode = "flex" | "gateway";
 type IbkrGatewaySetupMode = "auto" | "manual";
 
 export interface FlexQueryConfig {
@@ -44,15 +39,7 @@ export const IBKR_CONFIG_FIELDS: BrokerConfigField[] = [
     label: "Connection Mode",
     type: "select",
     required: true,
-    // New profiles start on sign-in; stored profiles never read this default,
-    // they resolve through `normalizeIbkrConfig`.
-    defaultValue: "cloud",
     options: [
-      {
-        label: "IBKR sign-in",
-        value: "cloud",
-        description: "Sign in to Interactive Brokers in your browser. Syncs positions, balances and history; orders open in IBKR for review.",
-      },
       { label: "Flex (read-only)", value: "flex", description: "Syncs via IBKR's Flex API. No software needed." },
       { label: "Gateway / TWS", value: "gateway", description: "Use IB Gateway or TWS for live data and trading." },
     ],
@@ -140,7 +127,7 @@ function normalizeFlexEndpoint(value: unknown): string {
 }
 
 function getMode(value: unknown): IbkrConnectionMode {
-  return value === "gateway" || value === "cloud" ? value : "flex";
+  return value === "gateway" ? "gateway" : "flex";
 }
 
 function getGatewaySetupMode(value: unknown): IbkrGatewaySetupMode | undefined {
@@ -228,11 +215,6 @@ export function isFlexConfigured(raw?: Record<string, unknown>): boolean {
   return config.connectionMode === "flex"
     && !!config.flex.token
     && !!config.flex.queryId;
-}
-
-/** IBKR sign-in has nothing to fill in: choosing the mode is the whole setup. */
-export function isCloudConfigured(raw?: Record<string, unknown>): boolean {
-  return normalizeIbkrConfig(raw).connectionMode === "cloud";
 }
 
 export function buildPersistedIbkrGatewayConfig(
