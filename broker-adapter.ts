@@ -1,4 +1,7 @@
+import { cloudBrokerLink } from "gloomberb/broker";
 import type { BrokerAdapter, BrokerPosition } from "gloomberb/types/broker";
+import type { BrokerInstanceConfig } from "gloomberb/types/config";
+import type { BrokerOrder, BrokerOrderRequest } from "gloomberb/types/trading";
 import {
   buildPersistedIbkrGatewayConfig,
   buildIbkrConfigFromValues,
@@ -18,10 +21,95 @@ import {
   requireGatewayBridge,
 } from "./gateway-bridge";
 import { getIbkrPortfolioPerformance } from "./portfolio-performance";
+import {
+  cloudErrorKind,
+  createIbkrCloudInstruction,
+  fetchIbkrCloudExecutions,
+  fetchIbkrCloudOrders,
+  fetchIbkrCloudPerformance,
+  fetchIbkrCloudSnapshot,
+} from "./cloud/client";
+import {
+  ensureIbkrCloudConnection,
+  forgetIbkrCloudStatus,
+  getIbkrCloudStatus,
+  openInBrowser,
+  subscribeIbkrCloudStatus,
+  withIbkrCloudConnection,
+} from "./cloud/connection";
 
 async function importFlexPositions(config: FlexQueryConfig): Promise<BrokerPosition[]> {
   const xml = await loadFlexStatement(config);
   return parseFlexPositions(xml);
+}
+
+const CLOUD_CONSOLE_UNAVAILABLE_MESSAGE =
+  "The IBKR Console needs a Gateway or TWS profile. Use the Trade tab to send orders to IBKR.";
+const CLOUD_ORDER_TYPES_MESSAGE = "IBKR sign-in sends market and limit orders only.";
+const CLOUD_MANAGED_ORDERS_MESSAGE = "Orders sent through IBKR sign-in are managed in IBKR.";
+
+function loadCloudSnapshot(instance: BrokerInstanceConfig) {
+  return withIbkrCloudConnection(instance, fetchIbkrCloudSnapshot, { reconnect: true });
+}
+
+/**
+ * IBKR sign-in creates order instructions, which the user reviews and submits
+ * in IBKR, and those only come as market or limit orders. Checking here keeps
+ * an order IBKR would refuse from sending the user through a sign-in first.
+ */
+function validateCloudOrder(request: BrokerOrderRequest): void {
+  if (!Number.isFinite(request.quantity) || request.quantity <= 0) {
+    throw new Error("Order quantity must be greater than zero.");
+  }
+  if (request.orderType !== "MKT" && request.orderType !== "LMT") {
+    throw new Error(CLOUD_ORDER_TYPES_MESSAGE);
+  }
+  const limitPrice = request.limitPrice ?? Number.NaN;
+  if (request.orderType === "LMT" && !(Number.isFinite(limitPrice) && limitPrice > 0)) {
+    throw new Error("Limit orders need a positive limit price.");
+  }
+}
+
+async function placeCloudOrder(instance: BrokerInstanceConfig, request: BrokerOrderRequest): Promise<BrokerOrder> {
+  validateCloudOrder(request);
+  await ensureIbkrCloudConnection(instance, { write: true, interactive: true });
+  const send = () => withIbkrCloudConnection(instance, () => createIbkrCloudInstruction(request));
+  const instruction = await send().catch(async (error: unknown) => {
+    // The grant lost trading since the check above: sign in for it and try once more.
+    if (cloudErrorKind(error) !== "write_not_granted") throw error;
+    await ensureIbkrCloudConnection(instance, { write: true, interactive: true });
+    return send();
+  });
+  openInBrowser(instruction.url);
+  return {
+    orderId: 0,
+    brokerInstanceId: instance.id,
+    accountId: request.accountId,
+    status: "PendingReview",
+    action: request.action,
+    orderType: request.orderType,
+    quantity: request.quantity,
+    filled: 0,
+    remaining: request.quantity,
+    limitPrice: request.limitPrice,
+    tif: request.tif,
+    reviewUrl: instruction.url,
+    warningText: "Review and submit this order in IBKR.",
+    updatedAt: Date.now(),
+    contract: request.contract,
+  };
+}
+
+/** The backend does not know this device's profile ids; stamp them like Gateway does. */
+function withInstanceId<T extends { brokerInstanceId?: string; contract: BrokerOrder["contract"] }>(
+  instance: BrokerInstanceConfig,
+  rows: T[],
+): T[] {
+  return rows.map((row) => ({
+    ...row,
+    brokerInstanceId: row.brokerInstanceId ?? instance.id,
+    contract: { ...row.contract, brokerInstanceId: row.contract.brokerInstanceId ?? instance.id },
+  }));
 }
 
 export const ibkrBroker: BrokerAdapter = {
@@ -31,6 +119,7 @@ export const ibkrBroker: BrokerAdapter = {
 
   async validate(instance) {
     const normalized = normalizeIbkrConfig(instance.config);
+    if (normalized.connectionMode === "cloud") return cloudBrokerLink.isSignedIn();
     if (normalized.connectionMode !== "gateway") return isFlexConfigured(instance.config);
     // Without the Gateway plugin the profile is well-formed but unusable, so it
     // fails validation rather than silently importing nothing.
@@ -39,6 +128,7 @@ export const ibkrBroker: BrokerAdapter = {
 
   async importPositions(instance) {
     const normalized = normalizeIbkrConfig(instance.config);
+    if (normalized.connectionMode === "cloud") return (await loadCloudSnapshot(instance)).positions;
     if (normalized.connectionMode === "gateway") {
       const gateway = requireGatewayBridge();
       await gateway.refresh(instance);
@@ -49,6 +139,10 @@ export const ibkrBroker: BrokerAdapter = {
 
   async importPortfolioSnapshot(instance) {
     const normalized = normalizeIbkrConfig(instance.config);
+    if (normalized.connectionMode === "cloud") {
+      const { accounts, positions } = await loadCloudSnapshot(instance);
+      return { accounts, positions };
+    }
     if (normalized.connectionMode === "gateway") {
       const gateway = requireGatewayBridge();
       await gateway.refresh(instance);
@@ -68,16 +162,24 @@ export const ibkrBroker: BrokerAdapter = {
 
   async connect(instance) {
     const normalized = normalizeIbkrConfig(instance.config);
+    if (normalized.connectionMode === "cloud") {
+      await ensureIbkrCloudConnection(instance, { write: true, interactive: true });
+      return;
+    }
     if (normalized.connectionMode !== "gateway") return;
     await requireGatewayBridge().getService(instance.id).connect(normalized.gateway);
   },
 
   async disconnect(instance) {
+    // IBKR sign-in is one grant shared by every Gloom surface, the user's agents
+    // included, so a profile going away on this device never revokes it.
+    if (normalizeIbkrConfig(instance.config).connectionMode === "cloud") forgetIbkrCloudStatus(instance.id);
     await getIbkrGatewayBridge()?.removeInstance(instance.id);
   },
 
   getStatus(instance) {
     const normalized = normalizeIbkrConfig(instance.config);
+    if (normalized.connectionMode === "cloud") return getIbkrCloudStatus(instance.id);
     if (normalized.connectionMode !== "gateway") {
       return {
         state: "disconnected",
@@ -92,6 +194,9 @@ export const ibkrBroker: BrokerAdapter = {
   },
 
   subscribeStatus(instance, listener) {
+    if (normalizeIbkrConfig(instance.config).connectionMode === "cloud") {
+      return subscribeIbkrCloudStatus(instance.id, listener);
+    }
     const gateway = getIbkrGatewayBridge();
     if (!gateway) return () => {};
     return gateway.subscribeStatus(instance.id, listener);
@@ -109,6 +214,15 @@ export const ibkrBroker: BrokerAdapter = {
 
   getProfileActions(instance) {
     const normalized = normalizeIbkrConfig(instance.config);
+    if (normalized.connectionMode === "cloud") {
+      return [{
+        id: "ibkr-console",
+        label: "IBKR Console",
+        paneId: "ibkr-trading",
+        disabled: true,
+        disabledReason: CLOUD_CONSOLE_UNAVAILABLE_MESSAGE,
+      }];
+    }
     return [{
       id: "ibkr-console",
       label: "IBKR Console",
@@ -153,6 +267,7 @@ export const ibkrBroker: BrokerAdapter = {
 
   async listAccounts(instance) {
     const normalized = normalizeIbkrConfig(instance.config);
+    if (normalized.connectionMode === "cloud") return (await loadCloudSnapshot(instance)).accounts;
     if (normalized.connectionMode === "gateway") {
       return requireGatewayBridge().getService(instance.id).getAccounts(normalized.gateway);
     }
@@ -161,6 +276,9 @@ export const ibkrBroker: BrokerAdapter = {
   },
 
   async getPortfolioPerformance(instance, accountId) {
+    if (normalizeIbkrConfig(instance.config).connectionMode === "cloud") {
+      return withIbkrCloudConnection(instance, () => fetchIbkrCloudPerformance(accountId));
+    }
     return getIbkrPortfolioPerformance(instance, accountId);
   },
 
@@ -245,6 +363,12 @@ export const ibkrBroker: BrokerAdapter = {
     );
   },
 
+  // Sign-in reports "connected" yet has no quote stream; without this the host
+  // would route quotes here and wake the profile, sending the user to sign in.
+  canStreamQuotes(instance) {
+    return normalizeIbkrConfig(instance.config).connectionMode !== "cloud";
+  },
+
   subscribeQuotes(instance, targets, onQuote) {
     const normalized = normalizeIbkrConfig(instance.config);
     if (normalized.connectionMode !== "gateway") {
@@ -255,18 +379,28 @@ export const ibkrBroker: BrokerAdapter = {
 
   async listOpenOrders(instance) {
     const normalized = normalizeIbkrConfig(instance.config);
+    if (normalized.connectionMode === "cloud") {
+      return withInstanceId(instance, await withIbkrCloudConnection(instance, fetchIbkrCloudOrders));
+    }
     if (normalized.connectionMode !== "gateway") return [];
     return requireGatewayBridge().getService(instance.id).listOpenOrders(normalized.gateway);
   },
 
   async listExecutions(instance) {
     const normalized = normalizeIbkrConfig(instance.config);
+    if (normalized.connectionMode === "cloud") {
+      return withInstanceId(instance, await withIbkrCloudConnection(instance, () => fetchIbkrCloudExecutions("DAYS_90")));
+    }
     if (normalized.connectionMode !== "gateway") return [];
     return requireGatewayBridge().getService(instance.id).listExecutions(normalized.gateway);
   },
 
   async previewOrder(instance, request) {
     const normalized = normalizeIbkrConfig(instance.config);
+    if (normalized.connectionMode === "cloud") {
+      validateCloudOrder(request);
+      return { warningText: "IBKR will open this order for you to review and submit." };
+    }
     if (normalized.connectionMode !== "gateway") {
       throw new Error("Gateway mode is required for order preview");
     }
@@ -275,6 +409,7 @@ export const ibkrBroker: BrokerAdapter = {
 
   async placeOrder(instance, request) {
     const normalized = normalizeIbkrConfig(instance.config);
+    if (normalized.connectionMode === "cloud") return placeCloudOrder(instance, request);
     if (normalized.connectionMode !== "gateway") {
       throw new Error("Gateway mode is required for trading");
     }
@@ -283,6 +418,7 @@ export const ibkrBroker: BrokerAdapter = {
 
   async modifyOrder(instance, orderId, request) {
     const normalized = normalizeIbkrConfig(instance.config);
+    if (normalized.connectionMode === "cloud") throw new Error(CLOUD_MANAGED_ORDERS_MESSAGE);
     if (normalized.connectionMode !== "gateway") {
       throw new Error("Gateway mode is required for trading");
     }
@@ -291,6 +427,7 @@ export const ibkrBroker: BrokerAdapter = {
 
   async cancelOrder(instance, orderId) {
     const normalized = normalizeIbkrConfig(instance.config);
+    if (normalized.connectionMode === "cloud") throw new Error(CLOUD_MANAGED_ORDERS_MESSAGE);
     if (normalized.connectionMode !== "gateway") {
       throw new Error("Gateway mode is required for trading");
     }

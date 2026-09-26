@@ -14,7 +14,11 @@ const GATEWAY_ACCOUNT_CACHE_POLICY = {
 } as const satisfies CachePolicy;
 
 export function getIbkrAccountCacheSourceKey(instance: BrokerInstanceConfig): string {
-  return fnv1aHashString(JSON.stringify(normalizeIbkrConfig(instance.config)));
+  const config = normalizeIbkrConfig(instance.config);
+  // Sign-in accounts come from the shared connection, not from the profile, so
+  // leftover Flex or Gateway fields on a sign-in profile must not discard them.
+  if (config.connectionMode === "cloud") return fnv1aHashString(JSON.stringify({ connectionMode: "cloud" }));
+  return fnv1aHashString(JSON.stringify(config));
 }
 
 export function getIbkrAccountCachePolicy(instance: BrokerInstanceConfig): CachePolicy {
