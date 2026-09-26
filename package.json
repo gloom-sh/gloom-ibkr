@@ -1,6 +1,6 @@
 {
   "name": "gloom-ibkr",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Interactive Brokers account sync for Gloomberb: IBKR sign-in, Flex, or Gateway",
   "type": "module",
   "main": "index.tsx",
