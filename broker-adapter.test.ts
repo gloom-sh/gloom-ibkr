@@ -111,6 +111,18 @@ describe("IBKR sign-in sync", () => {
     expect(ibkrBroker.getStatus!(instance)).toMatchObject({ state: "connected", mode: "cloud" });
   });
 
+  test("a background sync of a synced profile reports the lapsed sign-in without opening a browser", async () => {
+    const instance = { ...cloudInstance(), lastSyncedAt: 1_758_000_000_000 };
+    fakeCloud.handler = (call) => {
+      if (call.path === "/snapshot") throw cloudError(409, "reauth_required");
+      throw new Error(`Unexpected IBKR request: ${call.method} ${call.path}`);
+    };
+
+    await expect(ibkrBroker.importPortfolioSnapshot!(instance)).rejects.toThrow("Press Connect");
+    expect(fakeCloud.calls.map((call) => `${call.method} ${call.path}`)).toEqual(["GET /snapshot"]);
+    expect(fakeCloud.openedUrls).toEqual([]);
+  });
+
   test("retries only once when the connection still is not there", async () => {
     const instance = cloudInstance();
     fakeCloud.handler = (call) => {
@@ -262,12 +274,11 @@ describe("IBKR sign-in profile", () => {
     expect(ibkrBroker.toConfigValues!({ ...instance, config }).connectionMode).toBe("cloud");
   });
 
-  test("validates on the Gloom session and never streams quotes", async () => {
+  test("validates while signed out so the sync can say what to do, and never streams quotes", async () => {
     const instance = cloudInstance();
 
-    expect(await ibkrBroker.validate(instance)).toBe(true);
     fakeCloud.signedIn = false;
-    expect(await ibkrBroker.validate(instance)).toBe(false);
+    expect(await ibkrBroker.validate(instance)).toBe(true);
     // It reports "connected" but has no quote stream, so the host must not route quotes here.
     expect(ibkrBroker.canStreamQuotes!(instance)).toBe(false);
   });

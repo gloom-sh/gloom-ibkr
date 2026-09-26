@@ -1,4 +1,3 @@
-import { cloudBrokerLink } from "gloomberb/broker";
 import type { BrokerAdapter, BrokerPosition } from "gloomberb/types/broker";
 import type { BrokerInstanceConfig } from "gloomberb/types/config";
 import type { BrokerOrder, BrokerOrderRequest } from "gloomberb/types/trading";
@@ -48,8 +47,13 @@ const CLOUD_CONSOLE_UNAVAILABLE_MESSAGE =
 const CLOUD_ORDER_TYPES_MESSAGE = "IBKR sign-in sends market and limit orders only.";
 const CLOUD_MANAGED_ORDERS_MESSAGE = "Orders sent through IBKR sign-in are managed in IBKR.";
 
+/**
+ * Only a profile's first sync, right after the user adds it, may open the IBKR
+ * sign-in. Later syncs run in the background, so a lapsed sign-in is reported
+ * on the status for the user to reconnect rather than opening a browser tab.
+ */
 function loadCloudSnapshot(instance: BrokerInstanceConfig) {
-  return withIbkrCloudConnection(instance, fetchIbkrCloudSnapshot, { reconnect: true });
+  return withIbkrCloudConnection(instance, fetchIbkrCloudSnapshot, { reconnect: !instance.lastSyncedAt });
 }
 
 /**
@@ -119,7 +123,8 @@ export const ibkrBroker: BrokerAdapter = {
 
   async validate(instance) {
     const normalized = normalizeIbkrConfig(instance.config);
-    if (normalized.connectionMode === "cloud") return cloudBrokerLink.isSignedIn();
+    // Signed out of Gloom still validates, so the sync can say what to do instead of "setup is incomplete".
+    if (normalized.connectionMode === "cloud") return true;
     if (normalized.connectionMode !== "gateway") return isFlexConfigured(instance.config);
     // Without the Gateway plugin the profile is well-formed but unusable, so it
     // fails validation rather than silently importing nothing.
